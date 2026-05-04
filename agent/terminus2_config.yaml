@@ -1,0 +1,73 @@
+# Terminus 2 agent configuration for the Gravity RL task
+# Used by the Harbor framework to configure the coding agent.
+
+agent:
+  name: terminus2
+  version: "2"
+  description: >
+    Terminus 2 coding agent tasked with implementing a 2D N-body gravitational
+    simulator in Python and iteratively improving it until it passes the verifier.
+
+# --------------------------------------------------------------------------
+# Model settings
+# --------------------------------------------------------------------------
+model:
+  provider: anthropic
+  id: claude-opus-4-7                 # latest capable model for hard coding tasks
+  temperature: 0.2                    # low temperature for deterministic physics code
+  max_tokens: 8192
+
+# --------------------------------------------------------------------------
+# Task configuration
+# --------------------------------------------------------------------------
+task:
+  instruction_file: task/instruction.md
+  working_dir: .                       # agent writes simulator.py here
+  output_file: simulator.py
+
+# --------------------------------------------------------------------------
+# Verification loop
+# --------------------------------------------------------------------------
+verification:
+  command: "python verifier/verifier.py simulator.py"
+  pass_threshold: 70                   # minimum score out of 100
+  max_attempts: 8                      # retry limit before giving up
+  parse_score:
+    pattern: "TOTAL SCORE\\s*:\\s*(\\d+)/(\\d+)"
+    group: 1
+
+# --------------------------------------------------------------------------
+# Tool access
+# --------------------------------------------------------------------------
+tools:
+  - type: bash
+    allowed_commands:
+      - python
+      - python3
+    timeout_seconds: 30
+  - type: file_write
+    allowed_paths:
+      - "simulator.py"
+  - type: file_read
+    allowed_paths:
+      - "task/instruction.md"
+      - "verifier/verifier.py"
+      - "simulator.py"
+
+# --------------------------------------------------------------------------
+# Retry / reflection strategy
+# --------------------------------------------------------------------------
+retry:
+  strategy: reflect_on_error          # agent reads verifier output before retrying
+  reflection_prompt: >
+    The verifier produced the output above.  Read it carefully.
+    Identify which tests failed, understand why, and rewrite simulator.py
+    to fix every failing test without breaking passing ones.
+    Pay particular attention to the semi-implicit Euler integration order.
+
+# --------------------------------------------------------------------------
+# Logging
+# --------------------------------------------------------------------------
+logging:
+  level: info
+  output: logs/terminus2_run.log

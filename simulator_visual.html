@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gravity Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a12;
+    color: #e0e0f0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+    letter-spacing: 0.12em;
+    color: #a0c8ff;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  .layout {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  canvas {
+    border: 1px solid #2a3050;
+    border-radius: 8px;
+    background: #060610;
+    display: block;
+  }
+
+  .panel {
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .card {
+    background: #11142a;
+    border: 1px solid #2a3050;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+
+  .card h2 {
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #607090;
+    margin-bottom: 8px;
+  }
+
+  label {
+    font-size: 0.82rem;
+    color: #9090b0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 8px;
+  }
+
+  label span { color: #c0c8e8; font-weight: 500; }
+
+  input[type=range] {
+    width: 100%;
+    accent-color: #4080ff;
+    cursor: pointer;
+  }
+
+  input[type=number] {
+    width: 100%;
+    background: #0a0d1e;
+    border: 1px solid #2a3050;
+    border-radius: 4px;
+    color: #e0e8ff;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+  }
+
+  .row { display: flex; gap: 6px; }
+  .row label { flex: 1; }
+
+  button {
+    width: 100%;
+    padding: 8px 0;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: filter 0.15s;
+  }
+  button:hover { filter: brightness(1.2); }
+
+  #btnPlayPause { background: #2060d0; color: #fff; }
+  #btnReset     { background: #1a2040; color: #a0b0d0; border: 1px solid #2a3050; }
+  #btnRandomize { background: #203060; color: #a0d0ff; border: 1px solid #304080; }
+
+  .energy-table { font-size: 0.78rem; width: 100%; border-collapse: collapse; }
+  .energy-table td { padding: 2px 4px; color: #8090b0; }
+  .energy-table td:last-child { text-align: right; color: #c0d8ff; font-variant-numeric: tabular-nums; }
+
+  .body-list { display: flex; flex-direction: column; gap: 4px; }
+  .body-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: #8090b0;
+  }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .body-name { color: #c0c8e8; font-weight: 600; min-width: 60px; }
+  .body-stats { color: #607080; font-size: 0.72rem; }
+
+  #stepCounter {
+    font-size: 0.72rem;
+    color: #405060;
+    text-align: center;
+    margin-top: 2px;
+  }
+
+  .scenario-select {
+    width: 100%;
+    background: #0a0d1e;
+    border: 1px solid #2a3050;
+    border-radius: 4px;
+    color: #e0e8ff;
+    padding: 5px 8px;
+    font-size: 0.83rem;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<h1>2D N-Body Gravity Simulator</h1>
+
+<div class="layout">
+  <canvas id="canvas" width="640" height="640"></canvas>
+
+  <div class="panel">
+
+    <!-- Scenario picker -->
+    <div class="card">
+      <h2>Scenario</h2>
+      <select class="scenario-select" id="scenarioPicker">
+        <option value="earth_sun">Earth–Sun (2 body)</option>
+        <option value="earth_sun_jupiter">Earth–Sun–Jupiter (3 body)</option>
+        <option value="figure8">Figure-8 Choreography (3 body)</option>
+        <option value="equilateral">Equilateral Triangle (3 body)</option>
+        <option value="random">Random (N bodies)</option>
+      </select>
+    </div>
+
+    <!-- Simulation parameters -->
+    <div class="card">
+      <h2>Parameters</h2>
+
+      <label>
+        <span>G multiplier: <span id="gLabel">1×</span></span>
+        <input type="range" id="gSlider" min="-3" max="3" step="0.1" value="0">
+      </label>
+
+      <label>
+        <span>Time step dt: <span id="dtLabel">10 s</span></span>
+        <input type="range" id="dtSlider" min="1" max="5" step="0.1" value="2">
+      </label>
+
+      <label>
+        <span>Steps / frame: <span id="spdLabel">5</span></span>
+        <input type="range" id="spdSlider" min="1" max="100" step="1" value="5">
+      </label>
+
+      <label id="nBodiesLabel">
+        <span>Number of bodies: <span id="nLabel">3</span></span>
+        <input type="range" id="nSlider" min="2" max="5" step="1" value="3">
+      </label>
+
+      <label>
+        <span>Trail length: <span id="trailLabel">120</span></span>
+        <input type="range" id="trailSlider" min="0" max="400" step="10" value="120">
+      </label>
+    </div>
+
+    <!-- Controls -->
+    <div class="card">
+      <h2>Controls</h2>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <button id="btnPlayPause" style="flex:1">⏸ Pause</button>
+        <button id="btnReset" style="flex:1">↺ Reset</button>
+      </div>
+      <button id="btnRandomize">⚂ Randomize Bodies</button>
+      <div id="stepCounter">Step 0</div>
+    </div>
+
+    <!-- Energy readout -->
+    <div class="card">
+      <h2>Energy</h2>
+      <table class="energy-table">
+        <tr><td>Kinetic</td><td id="keVal">—</td></tr>
+        <tr><td>Potential</td><td id="peVal">—</td></tr>
+        <tr><td>Total</td><td id="teVal">—</td></tr>
+        <tr><td>Drift</td><td id="driftVal">—</td></tr>
+      </table>
+    </div>
+
+    <!-- Body list -->
+    <div class="card">
+      <h2>Bodies</h2>
+      <div class="body-list" id="bodyList"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ==========================================================================
+//  Physics core — mirrors simulator.py exactly (semi-implicit Euler)
+// ==========================================================================
+
+const G_BASE = 6.674e-11;
+
+class Body {
+  constructor(name, mass, x, y, vx = 0, vy = 0, color) {
+    this.name  = name;
+    this.mass  = mass;
+    this.x     = x;  this.y  = y;
+    this.vx    = vx; this.vy = vy;
+    this.color = color;
+    this.trail = [];   // [{x,y}]
+  }
+}
+
+class Sim {
+  constructor(G, dt) {
+    this.G      = G;
+    this.dt     = dt;
+    this.bodies = [];
+    this.time   = 0;
+    this.error  = null;
+  }
+
+  addBody(name, mass, x, y, vx, vy, color) {
+    this.bodies.push(new Body(name, mass, x, y, vx, vy, color));
+  }
+
+  step(n = 1) {
+    for (let s = 0; s < n; s++) {
+      const N = this.bodies.length;
+      const fx = new Float64Array(N);
+      const fy = new Float64Array(N);
+
+      // Compute all pairwise forces
+      for (let i = 0; i < N; i++) {
+        for (let j = i + 1; j < N; j++) {
+          const bi = this.bodies[i], bj = this.bodies[j];
+          const dx = bj.x - bi.x, dy = bj.y - bi.y;
+          const r2 = dx*dx + dy*dy;
+          if (r2 === 0) { this.error = "Collision!"; return; }
+          const r  = Math.sqrt(r2);
+          const F  = this.G * bi.mass * bj.mass / r2;
+          const Fx = F * dx / r, Fy = F * dy / r;
+          fx[i] += Fx; fy[i] += Fy;
+          fx[j] -= Fx; fy[j] -= Fy;
+        }
+      }
+
+      // Semi-implicit Euler: update v then x
+      for (let i = 0; i < N; i++) {
+        const b = this.bodies[i];
+        b.vx += (fx[i] / b.mass) * this.dt;
+        b.vy += (fy[i] / b.mass) * this.dt;
+        b.x  += b.vx * this.dt;
+        b.y  += b.vy * this.dt;
+      }
+      this.time += this.dt;
+    }
+  }
+
+  kineticEnergy() {
+    return this.bodies.reduce((s, b) => s + 0.5 * b.mass * (b.vx*b.vx + b.vy*b.vy), 0);
+  }
+
+  potentialEnergy() {
+    let pe = 0;
+    for (let i = 0; i < this.bodies.length; i++) {
+      for (let j = i + 1; j < this.bodies.length; j++) {
+        const bi = this.bodies[i], bj = this.bodies[j];
+        const dx = bj.x - bi.x, dy = bj.y - bi.y;
+        const r  = Math.sqrt(dx*dx + dy*dy);
+        pe += -this.G * bi.mass * bj.mass / r;
+      }
+    }
+    return pe;
+  }
+
+  totalEnergy() { return this.kineticEnergy() + this.potentialEnergy(); }
+}
+
+// ==========================================================================
+//  Scenario factory
+// ==========================================================================
+
+const COLORS = ['#ff6060','#60c0ff','#a0ff80','#ffcc40','#d080ff'];
+
+const AU      = 1.496e11;
+const M_SUN   = 1.989e30;
+const M_EARTH = 5.972e24;
+const M_JUP   = 1.898e27;
+
+function makeScenario(name, G, nBodies) {
+  const s = new Sim(G, 1); // dt set later
+
+  if (name === 'earth_sun') {
+    s.addBody('Sun',   M_SUN,   0,    0,    0,       0,        COLORS[0]);
+    s.addBody('Earth', M_EARTH, AU,   0,    0,       29780,    COLORS[1]);
+
+  } else if (name === 'earth_sun_jupiter') {
+    s.addBody('Sun',     M_SUN,   0,       0,  0,      0,       COLORS[0]);
+    s.addBody('Earth',   M_EARTH, AU,      0,  0,      29780,   COLORS[1]);
+    s.addBody('Jupiter', M_JUP,   5.2*AU,  0,  0,      13070,   COLORS[2]);
+
+  } else if (name === 'figure8') {
+    // Chenciner-Montgomery choreography
+    const m = 1e30, sc = 1e11, vc = 1e3;
+    s.addBody('A', m, -0.97000436*sc,  0.24308753*sc,  0.93240737/2*vc,  0.86473146/2*vc,  COLORS[0]);
+    s.addBody('B', m,  0.97000436*sc, -0.24308753*sc,  0.93240737/2*vc,  0.86473146/2*vc,  COLORS[1]);
+    s.addBody('C', m,  0,              0,             -0.93240737*vc,    -0.86473146*vc,    COLORS[2]);
+
+  } else if (name === 'equilateral') {
+    const m = 1e28, R = 2e9;
+    for (let i = 0; i < 3; i++) {
+      const a = i * 2 * Math.PI / 3;
+      const speed = Math.sqrt(G * m / (R * Math.sqrt(3)));
+      s.addBody(`P${i}`, m,
+        R * Math.cos(a), R * Math.sin(a),
+        -speed * Math.sin(a), speed * Math.cos(a),
+        COLORS[i]);
+    }
+
+  } else { // random
+    const n = Math.max(2, Math.min(5, nBodies));
+    for (let i = 0; i < n; i++) {
+      const angle = Math.random() * 2 * Math.PI;
+      const r     = 0.5e11 + Math.random() * 2e11;
+      const m     = 1e27 + Math.random() * 1e30;
+      const v     = Math.sqrt(G_BASE * 1e29 / r) * (0.3 + Math.random() * 0.7);
+      s.addBody(`B${i}`, m,
+        r * Math.cos(angle), r * Math.sin(angle),
+        -v * Math.sin(angle), v * Math.cos(angle),
+        COLORS[i]);
+    }
+  }
+  return s;
+}
+
+// ==========================================================================
+//  Renderer
+// ==========================================================================
+
+const canvas  = document.getElementById('canvas');
+const ctx     = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+function worldToScreen(x, y, cx, cy, scale) {
+  return [(x - cx) * scale + W/2, -(y - cy) * scale + H/2];
+}
+
+function drawFrame(sim, trailLen) {
+  ctx.fillStyle = 'rgba(6,6,16,0.25)';
+  ctx.fillRect(0, 0, W, H);
+
+  if (!sim || sim.bodies.length === 0) return;
+
+  // Compute centroid for camera
+  let cx = 0, cy = 0, totalM = 0;
+  for (const b of sim.bodies) { cx += b.x * b.mass; cy += b.y * b.mass; totalM += b.mass; }
+  cx /= totalM; cy /= totalM;
+
+  // Scale so all bodies fit
+  let maxR = 0;
+  for (const b of sim.bodies) {
+    const dx = b.x - cx, dy = b.y - cy;
+    maxR = Math.max(maxR, Math.sqrt(dx*dx + dy*dy));
+  }
+  const scale = maxR > 0 ? (W * 0.42) / maxR : 1e-10;
+
+  // Draw trails
+  for (const b of sim.bodies) {
+    if (b.trail.length < 2) continue;
+    const start = Math.max(0, b.trail.length - trailLen);
+    ctx.beginPath();
+    for (let i = start; i < b.trail.length; i++) {
+      const [sx, sy] = worldToScreen(b.trail[i].x, b.trail[i].y, cx, cy, scale);
+      if (i === start) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+    }
+    ctx.strokeStyle = b.color + '55';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+  }
+
+  // Draw bodies
+  for (const b of sim.bodies) {
+    const [sx, sy] = worldToScreen(b.x, b.y, cx, cy, scale);
+    const radius   = Math.max(3, Math.min(12, Math.log10(b.mass) - 20));
+
+    // Glow
+    const grd = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius * 3);
+    grd.addColorStop(0, b.color + 'cc');
+    grd.addColorStop(1, b.color + '00');
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius * 3, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    // Body
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = b.color;
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#c0d8ff';
+    ctx.font = '11px system-ui';
+    ctx.fillText(b.name, sx + radius + 4, sy - radius);
+  }
+}
+
+// ==========================================================================
+//  State
+// ==========================================================================
+
+let sim          = null;
+let running      = true;
+let stepCount    = 0;
+let E0           = null;
+let animId       = null;
+
+function getParams() {
+  const gMul   = Math.pow(10, parseFloat(document.getElementById('gSlider').value));
+  const dt     = Math.pow(10, parseFloat(document.getElementById('dtSlider').value));
+  const spf    = parseInt(document.getElementById('spdSlider').value);
+  const nBod   = parseInt(document.getElementById('nSlider').value);
+  const trail  = parseInt(document.getElementById('trailSlider').value);
+  const scene  = document.getElementById('scenarioPicker').value;
+  return { G: G_BASE * gMul, dt, spf, nBod, trail, scene };
+}
+
+function buildSim() {
+  const p  = getParams();
+  sim      = makeScenario(p.scene, p.G, p.nBod);
+  sim.G    = p.G;
+  sim.dt   = p.dt;
+  stepCount = 0;
+  E0        = sim.totalEnergy();
+  for (const b of sim.bodies) b.trail = [];
+  updateBodyList();
+}
+
+function updateBodyList() {
+  if (!sim) return;
+  const el = document.getElementById('bodyList');
+  el.innerHTML = '';
+  for (const b of sim.bodies) {
+    const row = document.createElement('div');
+    row.className = 'body-row';
+    row.innerHTML = `
+      <div class="dot" style="background:${b.color}"></div>
+      <div>
+        <div class="body-name">${b.name}</div>
+        <div class="body-stats">m = ${b.mass.toExponential(2)} kg</div>
+      </div>`;
+    el.appendChild(row);
+  }
+}
+
+function updateEnergy() {
+  if (!sim) return;
+  const ke   = sim.kineticEnergy();
+  const pe   = sim.potentialEnergy();
+  const te   = ke + pe;
+  const fmt  = v => v.toExponential(3);
+  const drift = E0 !== 0 ? Math.abs((te - E0) / E0) * 100 : 0;
+
+  document.getElementById('keVal').textContent    = fmt(ke) + ' J';
+  document.getElementById('peVal').textContent    = fmt(pe) + ' J';
+  document.getElementById('teVal').textContent    = fmt(te) + ' J';
+  document.getElementById('driftVal').textContent = drift.toFixed(4) + '%';
+}
+
+// ==========================================================================
+//  Main loop
+// ==========================================================================
+
+function loop() {
+  animId = requestAnimationFrame(loop);
+
+  const p = getParams();
+  sim.G  = p.G;
+  sim.dt = p.dt;
+
+  if (running && !sim.error) {
+    sim.step(p.spf);
+    stepCount += p.spf;
+
+    // Record trail points every 2 steps to save memory
+    if (stepCount % 2 === 0) {
+      for (const b of sim.bodies) {
+        b.trail.push({ x: b.x, y: b.y });
+        if (b.trail.length > 2000) b.trail.shift();
+      }
+    }
+  }
+
+  drawFrame(sim, p.trail);
+  updateEnergy();
+  document.getElementById('stepCounter').textContent =
+    `Step ${stepCount.toLocaleString()}  |  t = ${(sim.time).toExponential(2)} s`;
+
+  if (sim.error) {
+    ctx.fillStyle = '#ff4040';
+    ctx.font = 'bold 18px system-ui';
+    ctx.fillText('⚠ ' + sim.error, 20, 30);
+  }
+}
+
+// ==========================================================================
+//  Controls
+// ==========================================================================
+
+document.getElementById('btnPlayPause').addEventListener('click', () => {
+  running = !running;
+  document.getElementById('btnPlayPause').textContent = running ? '⏸ Pause' : '▶ Play';
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  buildSim();
+});
+
+document.getElementById('btnRandomize').addEventListener('click', () => {
+  document.getElementById('scenarioPicker').value = 'random';
+  buildSim();
+});
+
+// Slider labels
+document.getElementById('gSlider').addEventListener('input', function() {
+  const v = Math.pow(10, parseFloat(this.value));
+  document.getElementById('gLabel').textContent =
+    v < 0.01 ? v.toExponential(1) + '×' : v.toFixed(v < 10 ? 2 : 0) + '×';
+});
+
+document.getElementById('dtSlider').addEventListener('input', function() {
+  const v = Math.pow(10, parseFloat(this.value));
+  document.getElementById('dtLabel').textContent =
+    v < 100 ? v.toFixed(1) + ' s' : (v/3600).toFixed(1) + ' h';
+});
+
+document.getElementById('spdSlider').addEventListener('input', function() {
+  document.getElementById('spdLabel').textContent = this.value;
+});
+
+document.getElementById('nSlider').addEventListener('input', function() {
+  document.getElementById('nLabel').textContent = this.value;
+});
+
+document.getElementById('trailSlider').addEventListener('input', function() {
+  document.getElementById('trailLabel').textContent = this.value;
+});
+
+document.getElementById('scenarioPicker').addEventListener('change', buildSim);
+
+// ==========================================================================
+//  Boot
+// ==========================================================================
+
+buildSim();
+loop();
+</script>
+</body>
+</html>

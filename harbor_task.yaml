@@ -1,0 +1,108 @@
+# Harbor task definition — Gravity RL Environment
+# Run with: harbor run harbor_task.yaml
+
+task:
+  id: gravity-rl-simulator
+  name: "2D N-Body Gravity Simulator"
+  version: "1.0.0"
+  description: >
+    An RL coding task where the agent must implement a 2D N-body gravitational
+    simulator with semi-implicit Euler integration.  The verifier awards up to
+    100 points across 10 tests covering correctness, numerical accuracy, and
+    energy stability.
+
+# --------------------------------------------------------------------------
+# Environment
+# --------------------------------------------------------------------------
+environment:
+  runtime: python3
+  python_version: ">=3.11"
+  dependencies: []                    # stdlib only — no pip installs needed
+
+  files:
+    # files the agent may READ
+    read:
+      - task/instruction.md
+      - verifier/verifier.py
+
+    # files the agent must CREATE / MODIFY
+    write:
+      - simulator.py
+
+    # files always present in the workspace (hidden from agent listing)
+    scaffold:
+      - verifier/verifier.py
+      - task/instruction.md
+
+# --------------------------------------------------------------------------
+# Agent
+# --------------------------------------------------------------------------
+agent:
+  config: agent/terminus2_config.yaml
+
+# --------------------------------------------------------------------------
+# Scoring
+# --------------------------------------------------------------------------
+scoring:
+  verifier:
+    command: "python verifier/verifier.py simulator.py"
+    max_score: 100
+    pass_threshold: 70
+    score_regex: "TOTAL SCORE\\s*:\\s*(\\d+)/(\\d+)"
+    score_group: 1
+
+  rubric:
+    - id: T1
+      name: "Instantiation & API surface"
+      points: 5
+    - id: T2
+      name: "add_body / get_state ordering"
+      points: 10
+    - id: T3
+      name: "ValueError on 6th body"
+      points: 5
+    - id: T4
+      name: "ValueError on step with <2 bodies"
+      points: 5
+    - id: T5
+      name: "ZeroDivisionError on coincident bodies"
+      points: 5
+    - id: T6
+      name: "Single-step Euler accuracy"
+      points: 25
+    - id: T7
+      name: "3-body symmetric force check"
+      points: 15
+    - id: T8
+      name: "total_energy at t=0"
+      points: 10
+    - id: T9
+      name: "reset() clears state"
+      points: 5
+    - id: T10
+      name: "1000-step energy stability"
+      points: 10
+
+# --------------------------------------------------------------------------
+# Execution policy
+# --------------------------------------------------------------------------
+execution:
+  max_wall_time_seconds: 300
+  max_attempts: 8
+  sandbox: docker                     # isolate filesystem and network
+  docker_image: python:3.12-slim
+  network: none                       # no internet access needed
+
+# --------------------------------------------------------------------------
+# Metadata
+# --------------------------------------------------------------------------
+metadata:
+  domain: physics-simulation
+  difficulty: medium
+  tags:
+    - numerical-methods
+    - classical-mechanics
+    - reinforcement-learning
+    - coding-task
+  author: "Aryan Sharma"
+  created: "2026-05-04"
