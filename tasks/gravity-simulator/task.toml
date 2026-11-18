@@ -1,0 +1,17 @@
+version = "1.0"
+
+[metadata]
+author_name = "Aryan Sharma"
+author_email = "aryanksharma1729@gmail.com"
+difficulty_explanation = "Requires correct semi-implicit Euler (update order matters), honest energy accounting and two-body Kepler periods. Checked on randomized hidden scenarios with large time steps and multi-orbit runs."
+category = "scientific-computing"
+tags = ["physics", "numerical-methods", "python", "n-body"]
+
+[verifier]
+timeout_sec = 600.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0
