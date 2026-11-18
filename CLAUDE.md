@@ -1,11 +1,14 @@
-# Gravity RL Environment — Project Guide
+# Gravity RL Environment — Developer Guide
 
 ## What this project is
 
-A self-contained **coding RL task** designed for the Harbor framework with the
-Terminus 2 agent.  The agent is given a physics problem (implement a 2D N-body
-gravity simulator), writes `simulator.py`, and is scored 0–100 by an automated
-verifier.  The episode succeeds when the score reaches ≥ 70.
+A coding task for AI agents, packaged as a Harbor task. The agent implements a 2D
+N-body gravity simulator in `/app/simulator.py`. A hardened verifier scores it on
+randomized hidden scenarios and writes a binary reward (1 = pass, 0 = fail).
+
+The verifier is the core of the project. Treat any change that makes it easier to pass
+without correct physics as a bug. See `HARDENING.md` for the reward hacks it defends
+against.
 
 ---
 
@@ -13,132 +16,104 @@ verifier.  The episode succeeds when the score reaches ≥ 70.
 
 ```
 gravity-rl-env/
-├── gym/
-│   └── gravity_env.py          OpenAI-gym-style wrapper around GravitySimulator
-├── task/
-│   └── instruction.md          The prompt shown to the agent
-├── verifier/
-│   └── verifier.py             Automated scorer (10 tests, 100 pts total)
-├── agent/
-│   └── terminus2_config.yaml   Terminus 2 / Harbor agent settings
-├── harbor_task.yaml            Top-level Harbor task definition
-├── simulator.py                Reference solution (scores 100/100)
-├── simulator_visual.html       Interactive browser-based N-body visualiser
-├── CLAUDE.md                   This file
-└── README.md                   GitHub-facing overview
+├── tasks/gravity-simulator/       Harbor task (everything Harbor needs)
+│   ├── instruction.md             Spec shown to the agent
+│   ├── task.toml                  Timeouts (agent 900s, verifier 600s) and metadata
+│   ├── environment/Dockerfile     Agent image: python:3.12-slim, WORKDIR /app
+│   ├── solution/solve.sh          Reference solution; `bash solve.sh <path>` writes it anywhere
+│   └── tests/
+│       ├── test.sh                Harbor entrypoint; writes /logs/verifier/reward.txt
+│       ├── verifier.py            Scenario generation, reference physics, scoring
+│       └── worker.py              Runs agent code; reports raw observations only
+├── dev/
+│   ├── check_verifier.py          Scores reference, alt-correct and 3 hacks on old and new verifier
+│   ├── hacks/                     explicit_euler.py, cached_energy.py, verifier_hijack.py
+│   ├── alt_correct_simulator.py   Independent correct solution
+│   └── old_verifier.py            v1 verifier (insecure; kept only for comparison)
+├── gym/gravity_env.py             Gym-style wrapper (demo only, imports root simulator.py)
+├── simulator.py                   Simulator for the gym demo; not visible to the agent
+├── simulator_visual.html          Browser visualiser
+├── HARDENING.md                   Hacks found, fixes, evidence
+└── README.md                      GitHub-facing overview
 ```
 
 ---
 
-## Key files explained
-
-### `task/instruction.md`
-The complete specification given to the agent.  It covers:
-- The exact Python interface the agent must implement
-- The physics (Newton's law of gravitation in 2D)
-- The semi-implicit Euler integration order (forces → velocities → positions)
-- All required error conditions
-- The scoring breakdown
-
-### `verifier/verifier.py`
-Runs 10 tests and prints a detailed report.  Usage:
+## Commands
 
 ```bash
-python verifier/verifier.py simulator.py
+# Must end with "NEW VERIFIER BEHAVES AS EXPECTED". Run after ANY verifier change.
+python3 dev/check_verifier.py
+
+# Full report for one submission; VERIFIER_SEED makes the run reproducible
+VERIFIER_SEED=7 python3 -I tasks/gravity-simulator/tests/verifier.py simulator.py
+
+# End-to-end in Docker (Docker Desktop must be running)
+harbor run -p tasks/gravity-simulator -a oracle
+harbor view jobs
 ```
-
-Tests (abridged):
-
-| ID  | Description                         | Points |
-|-----|-------------------------------------|--------|
-| T1  | API surface present                 | 5      |
-| T2  | Insertion order preserved           | 10     |
-| T3  | ValueError on 6th body              | 5      |
-| T4  | ValueError with < 2 bodies          | 5      |
-| T5  | ZeroDivisionError on collision      | 5      |
-| T6  | Single-step Sun–Earth accuracy      | 25     |
-| T7  | 3-body symmetric force              | 15     |
-| T8  | total_energy() at t = 0             | 10     |
-| T9  | reset() clears state                | 5      |
-| T10 | 1 000-step energy stability         | 10     |
-
-### `simulator.py`
-Reference implementation that scores 100/100.  When the agent rewrites this
-file, the verifier is run against the agent's version.  The reference copy is
-committed to the repo so the environment can always be validated.
-
-### `gym/gravity_env.py`
-A gym-compatible wrapper exposing `reset()`, `step()`, and `render()`.  Reward
-is the negative fractional energy drift per step (0 = perfect conservation).
-Built-in scenarios: `earth_sun`, `earth_sun_jupiter`, `figure8`, `random_3body`.
-
-### `agent/terminus2_config.yaml`
-Configures the Terminus 2 agent: model (claude-opus-4-7), temperature,
-verification loop, allowed tools, and reflection strategy for retries.
-
-### `harbor_task.yaml`
-Top-level Harbor task file.  Defines the environment, agent pointer, scoring
-rubric, and execution policy (Docker sandbox, 300 s wall time, 8 attempts max).
 
 ---
 
-## Running locally
+## How the verifier works
 
-```bash
-# Score the reference solution
-python verifier/verifier.py simulator.py
+1. `verifier.py` draws random scenarios for T1–T12 from a seed.
+2. For each test it starts `python3 -I worker.py /app/simulator.py` with a 20s timeout
+   and sends the scenario on stdin.
+3. `worker.py` silences the agent's stdout/stderr, runs the scenario, and returns raw
+   observations (states, return values, exception names) on a private file descriptor,
+   tagged with a per-run nonce.
+4. `verifier.py` scores those observations against its own reference integrator.
+5. Pass = score ≥ 122/125 **and** full marks on gating tests T6, T8, T10.
 
-# Quick smoke-test of the gym wrapper
-python - <<'EOF'
-from gym.gravity_env import GravityEnv
-env = GravityEnv(scenario="earth_sun", dt=10.0, max_steps=10)
-obs, info = env.reset()
-print("Initial energy:", info["energy"])
-for _ in range(5):
-    obs, reward, terminated, truncated, info = env.step(0)
-    print(f"  step={info['step']}  drift={info['energy_drift']:.2e}")
-print(env.render())
-EOF
+### Rules to keep when editing
 
-# Open the visual simulator
-open simulator_visual.html
-```
+- **Never import or exec agent code in `verifier.py`.** Agent code runs only in `worker.py`.
+- **Keep `worker.py` free of reference physics and scoring.** Anything there is
+  available to agent code at runtime.
+- **Compute expected values in the parent from scenario parameters**, never from the
+  agent's own methods. T10 computes energy from the returned state for this reason.
+- **Randomize new scenarios** with the `rng` passed to `make_scenarios`. No fixed
+  expected constants.
+- **Check integrator behaviour on displacements at large dt.** At small dt the
+  semi-implicit vs explicit Euler difference falls below any useful tolerance.
+- **After any change**, run `dev/check_verifier.py`, and also check the reference and
+  `dev/alt_correct_simulator.py` over many seeds to catch false failures:
+  ```bash
+  for s in $(seq 1 40); do VERIFIER_SEED=$s python3 -I tasks/gravity-simulator/tests/verifier.py dev/alt_correct_simulator.py >/dev/null || echo "seed $s failed"; done
+  ```
+- **Adding a reward hack:** put it in `dev/hacks/`, add it to `SUBMISSIONS` in
+  `dev/check_verifier.py`, and document it in `HARDENING.md`.
 
 ---
 
 ## Physics notes
 
-**Force law**
+**Force law:** `F_ij = G * m_i * m_j / r_ij²`, directed from i toward j. No softening;
+coincident bodies raise `ZeroDivisionError`.
 
-```
-F_ij = G * m_i * m_j / r_ij²
-```
-
-Direction: unit vector from i toward j.  Newton's third law applied via Newton's
-third law (body j gets equal and opposite force).
-
-**Semi-implicit Euler**
-
+**Semi-implicit Euler, per step:**
 ```
 1. Compute all accelerations from current positions
 2. v_new = v_old + a * dt
-3. x_new = x_old + v_new * dt   ← uses NEW velocity
+3. x_new = x_old + v_new * dt   ← uses the NEW velocity
 ```
+This order keeps energy bounded over long runs. At 300 steps per orbit, semi-implicit
+Euler drifts < 0.3% over ~3 orbits; explicit Euler drifts > 20%. T10 relies on this gap.
 
-Step 3 is the distinguishing feature.  It provides better energy behaviour than
-explicit Euler and is required to pass T10.
+**Orbital period (T11):** Kepler period of the relative two-body orbit:
+`a = -μ / (2ε)`, `ε = v_rel²/2 − μ/r`, `μ = G(m1 + m2)`, `T = 2π·sqrt(a³/μ)`.
 
 ---
 
-## Extending the environment
+## Extending the gym demo
 
-- **New scenarios**: add a branch in `GravityEnv._setup_scenario`.
-- **Thrust actions**: override `GravityEnv.apply_action` to modify `_sim` body
-  velocities before `_sim.step(1)` is called.
-- **More bodies**: raise the `add_body` limit in `simulator.py` and the
-  observation-space dimensionality in `_get_obs`.
-- **Reward shaping**: replace the energy-drift reward in `GravityEnv.step` with
-  e.g. orbit-stability or target-proximity rewards.
+- **New scenarios:** add a branch in `GravityEnv._setup_scenario`.
+- **Thrust actions:** override `GravityEnv.apply_action` to change body velocities
+  before `_sim.step(1)`.
+- **Reward shaping:** replace the energy-drift reward in `GravityEnv.step`.
+
+The gym demo is separate from the Harbor task. Changing it does not affect scoring.
 
 ---
 
@@ -146,7 +121,6 @@ explicit Euler and is required to pass T10.
 
 | Requirement | Version |
 |-------------|---------|
-| Python      | ≥ 3.11  |
-| numpy       | optional (not used in reference solution) |
-| scipy       | not used / not allowed |
-| gym / gymnasium | not required (gym wrapper is self-contained) |
+| Python | ≥ 3.11 (the agent's image uses 3.12) |
+| Packages | none; the task and verifier use the standard library only |
+| Docker + Harbor | only for `harbor run` |
